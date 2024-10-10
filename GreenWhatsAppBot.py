@@ -11,11 +11,11 @@ class WhatsAppProcess:
         # параметры доступа к инстансу
         self.apiUrl = 'https://1103.api.green-api.com'
         self.mediaUrl = 'https://1103.media.green-api.com'
-        self.idInstance = '1103129893'
-        self.apiTokenInstance = 'dfdcf023cc7247c5a94ec18b62ecf4b49d9eb51ed7a74d169b'
+        self.idInstance = 'YOUR_ID_INSTANCE'
+        self.apiTokenInstance = 'YOUR_API_TOKEN_INSTANCE'
 
     def set_settings(self):
-        """Установка настроек инстанса"""
+        """Установка настроек инстанса, подробно в офф. документации green_api"""
         url = f"{self.apiUrl}/waInstance{self.idInstance}/setSettings/{self.apiTokenInstance}"
 
         payload = ("{\r\n\t\"webhookUrl\": \"\","
@@ -71,22 +71,6 @@ class WhatsAppProcess:
         state_instance = response.json().get("stateInstance")
         print('StateInstance: ', state_instance)
         return state_instance
-
-    def get_message(self):
-        """Получение сообщения по chatId и idMessage"""
-        url = f"{self.apiUrl}/waInstance{self.idInstance}/getMessage/{self.apiTokenInstance}"
-        chatId = "79513945401@c.us"
-        payload = {
-            "chatId": "79513945401@c.us",
-            "idMessage": "BAE51C0F721A2CCC"
-        }
-        headers = {
-            'Content-Type': 'application/json'
-        }
-
-        response = requests.post(url, json=payload)
-
-        print(response.text.encode('utf8'))
 
     def receive_incoming_notifications(self):
         """Получение первого уведомления из очереди с последующим удалением из нее"""
@@ -253,10 +237,10 @@ class WhatsAppProcess:
 class YClientsCRM:
 
     def __init__(self):
-        self.login = "pribilvik@mail.ru"
-        self.password = "253035PrIl"
-        self.partner_token = "anwcsuwtym29snhk7u3n"
-        self.company_id = "1139898"
+        self.login = "YOUR_LOGIN"
+        self.password = "YOUR_PASSWORD"
+        self.partner_token = "YOUR_PARTNER_TOKEN"
+        self.company_id = "YOUR_COMPANY_ID"
 
     def authorization(self):
         values = {
@@ -386,7 +370,7 @@ def gpt_req(messages, user_token, staff_dict):
     ]
 
     completion = client.chat.completions.create(
-        model="gpt-4o", # "gpt-4-turbo"
+        model="gpt-4o", 
         messages=messages,
         tools=tools,
         temperature=1.0
@@ -436,17 +420,17 @@ def gpt_req(messages, user_token, staff_dict):
         print('Функция не вызвана')
         return gpt_out
 
-
+# Вставить свои данные по персоналу из CRM
 staff_dict = {
-    'Илья': '3472006',
-    'Андрей': '3480353'
+    'STAFF1': 'STAFF_ID1',
+    'STAFF2': 'STAFF_ID2'
 }
 CRM = YClientsCRM()
 
 user_token = CRM.authorization()
 # CRM.booking(user_token=user_token)
 
-prompt_path = 'C://Users//Ilia//PycharmProjects//pythonProject4//prompts//other//'
+prompt_path = 'YOUR_PROMPT_PATH'
 prompt_file_txt = "ChatBotPromptEng.txt"  # prompt file
 
 # read prompt file
@@ -483,7 +467,7 @@ while True:
 
 # Очистка пула
 Wh.clear_pull()
-i = 1
+
 # Цикл мониторинга сообщений
 while True:
 
@@ -506,20 +490,6 @@ while True:
         # Отправка сообщения от бота
         Wh.send_message(bot_answer)
 
-    # if i % 10 == 0:
-    #     if Wh.get_chat_history()[-1]['sender_name'] != 'bot':
-    #         prompt_ar = [
-    #             {"role": "system", "content": f"{system_prompt}"},
-    #             {"role": "user", "content": f"{Wh.get_chat_history()}"}
-    #         ]
-    #         print('')
-    #         print('prompt_ar:', prompt_ar)
-    #
-    #         # Запрос и ответ gpt
-    #         bot_answer = gpt_req(prompt_ar, staff_dict=staff_dict, user_token=user_token)
-    #         # Отправка сообщения от бота
-    #         Wh.send_message(bot_answer)
-    i += 1
     time.sleep(10)
 
 
