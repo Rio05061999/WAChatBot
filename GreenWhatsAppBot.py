@@ -274,6 +274,19 @@ class YClientsCRM:
         print(response_json)
         return user_token
 
+    def get_staff(self):
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'{self.partner_token},  {user_token}',
+            'Accept': 'application/vnd.api.v2+json'  
+        }
+        url = f'https://api.yclients.com/api/v1/company/{self.company_id}/staff/'
+
+        response = requests.get(url, headers=headers).json()
+        staff_dict_inner = {staff['name']: staff['id'] for staff in response['data']}
+        return staff_dict_inner
+
+    
     def booking(self, user_token):
 
         headers = {
@@ -420,15 +433,13 @@ def gpt_req(messages, user_token, staff_dict):
         print('Функция не вызвана')
         return gpt_out
 
-# Вставить свои данные по персоналу из CRM
-staff_dict = {
-    'STAFF1': 'STAFF_ID1',
-    'STAFF2': 'STAFF_ID2'
-}
+staff_dict = CRM.get_staff()
+
 CRM = YClientsCRM()
 
 user_token = CRM.authorization()
 # CRM.booking(user_token=user_token)
+staff_dict = CRM.get_staff()
 
 prompt_path = 'YOUR_PROMPT_PATH'
 prompt_file_txt = "ChatBotPromptEng.txt"  # prompt file
