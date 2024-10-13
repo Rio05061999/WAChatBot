@@ -278,72 +278,81 @@ class YClientsCRM:
         headers = {
             'Content-Type': 'application/json',
             'Authorization': f'{self.partner_token},  {user_token}',
-            'Accept': 'application/vnd.api.v2+json'  
+            'Accept': 'application/vnd.api.v2+json'  # Добавляем нужный Accept заголовок
         }
         url = f'https://api.yclients.com/api/v1/company/{self.company_id}/staff/'
 
         response = requests.get(url, headers=headers).json()
-        staff_dict_inner = {staff['name']: staff['id'] for staff in response['data']}
-        return staff_dict_inner
+        staff_dict_inner = {staff['id']: [staff['name'], staff['specialization']] for staff in response['data']}
+
+        # Фильтруем только тех, кто не является "Администратором"
+        filtered_dict = {key: value for key, value in staff_dict_inner.items() if value[1] != 'Администратор'}
+
+        return filtered_dict
 
     
-    def booking(self, user_token):
+    def get_available_staff(self, user_token, staff_dict, start_date, end_date):
 
-        headers = {
-          'Content-Type': 'application/json',
-          'Accept': 'application/vnd.yclients.v2+json',
-          'Authorization': f'{self.partner_token}, {user_token}'
-        }
+        def get_staff_schedule(staff_id):
+            """Получить расписание сотрудника. Используется в function calling"""
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/vnd.yclients.v2+json',
+                'Authorization': f'{self.partner_token}, {user_token}'
+            }
 
-        req = urllib.request.Request(
-            f'https://api.yclients.com/api/v1/records/{self.company_id}?page=&'
-            f'count=&'
-            f'staff_id=&'
-            f'client_id=&'
-            f'created_user_id=&'
-            f'start_date=&'
-            f'end_date=&'
-            f'c_start_date=&'
-            f'c_end_date=&'
-            f'changed_after=&'
-            f'changed_before=&'
-            f'include_consumables=&'
-            f'include_finance_transactions=',
-            headers=headers
-        )
+            url = f'https://api.yclients.com/api/v1/schedule/{self.company_id}/{staff_id}/{start_date}/{end_date}'
+            req = urllib.request.Request(url, headers=headers)
 
-        # Perform the request
-        with urllib.request.urlopen(req) as response:
-            html = response.read()
+            with urllib.request.urlopen(req) as response:
+                html = response.read()
+            # Parse the response as JSON
+            response_json = json.loads(html.decode('utf-8'))['data'][0]['is_working']
 
-        # Parse the response as JSON
-        response_json = json.loads(html.decode('utf-8'))
-        info_list = []
-        for i in response_json['data']:
-            staff_name = i['staff']['name']
-            staff_id = i['staff']['id']
-            booked_visit_date = i['date']
-            info_list.append({'staff_name': f'{staff_name}', 'staff_id': f'{staff_id}', 'booked_visit': f'{booked_visit_date}'})
-        print(info_list)
+            return response_json
 
-    def get_staff_schedule(self, user_token, staff_id, start_date, end_date):
-        """Получить расписание сотрудника. Используется в function calling"""
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/vnd.yclients.v2+json',
-            'Authorization':  f'{self.partner_token}, {user_token}'
-        }
-        req = urllib.request.Request(f'https://api.yclients.com/api/v1/schedule/{self.company_id}/{staff_id}/{start_date}/{end_date}', headers=headers)
+        def get_records():
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/vnd.yclients.v2+json',
+                'Authorization': f'{self.partner_token}, {user_token}'
+            }
 
-        with urllib.request.urlopen(req) as response:
-            html = response.read()
+            url = (
+                f"https://api.yclients.com/api/v1/records/{self.company_id}?"
+                f"start_date={start_date}&"
+                f"end_date={end_date}"
+            )
+            response = requests.get(url, headers=headers).json()
 
-        # Parse the response as JSON
-        response_json = json.loads(html.decode('utf-8'))
+            records = [
+                {
+                    'staff_id': staff['staff_id'],
+                    'date': staff['date'],
+                    'seance_length': int(staff['seance_length']) / 60
+                } for staff in response['data']
+            ]
+            return records
 
-        print(response_json)
+        records = get_records()
 
-        return response_json
+        # Убедитесь, что staff_id не является списком
+        existing_staff_ids = {record['staff_id'] for record in records}
+        # Проходим по всем сотрудникам в словаре staff_dict
+        for staff_id in staff_dict:
+            # Проверяем, есть ли сотрудник в записях
+            if staff_id not in existing_staff_ids:
+                # Если сотрудника нет в записях, но он работает
+                if get_staff_schedule(staff_id) == '1':
+                    # Добавляем запись с пустыми 'date' и 'seance_length'
+                    records.append(
+                        {
+                            'staff_id': staff_id,
+                            'date': '',
+                            'seance_length': 0
+                        }
+                    )
+        return records
 
 
 def gpt_req(messages, user_token, staff_dict):
@@ -353,15 +362,11 @@ def gpt_req(messages, user_token, staff_dict):
         {
             "type": "function",
             "function": {
-                "name": "get_staff_schedule",
+                "name": "get_available_staff",
                 "description": "Use this function to get staff schedule",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "staff_id": {
-                            "type": "string",
-                            "description": f"id of the staff that you need to search. Staff id dictionary: {staff_dict}"
-                        },
                         "start_date": {
                             "type": "string",
                             "description": "Start of the date diapason to search. 2024 year. Date format: 'YYYY-MM-DD'",
@@ -375,7 +380,7 @@ def gpt_req(messages, user_token, staff_dict):
                             "description": f"The authorization token to use: {user_token}"
                         }
                     },
-                    "required": ["staff_id", "start_date", "end_date", "user_token"],
+                    "required": ["start_date", "end_date", "user_token"],
                     "additionalProperties": False,
                 }
             }
@@ -383,7 +388,7 @@ def gpt_req(messages, user_token, staff_dict):
     ]
 
     completion = client.chat.completions.create(
-        model="gpt-4o", 
+        model="gpt-4o",  # "gpt-4-turbo"
         messages=messages,
         tools=tools,
         temperature=1.0
@@ -397,24 +402,15 @@ def gpt_req(messages, user_token, staff_dict):
     function_call = completion.choices[0].message.function_call
     tool_calls = completion.choices[0].message.tool_calls
 
-    if function_call:
-        function_name = function_call.get("name")
-        function_arguments = function_call.get("arguments")
-        print(f"Function called: {function_name}, with arguments: {function_arguments}")
-
-        # Выполни функцию здесь, если вызвана
-        staff_schedule = CRM.get_staff_schedule(**json.loads(function_arguments))  # Распакуй аргументы
-        return f"{gpt_out}\n\nРасписание:\n{staff_schedule}"  # Встроить результат функции в ответ
-
     # Проверка tool_calls
-    elif tool_calls:
+    if tool_calls:
         for tool_call in tool_calls:
             function_name = tool_call.function.name
             function_arguments = tool_call.function.arguments
             print(f"Tool called: {function_name}, with arguments: {function_arguments}")
 
             # Выполни функцию здесь, если вызвана
-            staff_schedule = CRM.get_staff_schedule(**json.loads(function_arguments))  # Распакуй аргументы
+            staff_schedule = CRM.get_available_staff(**json.loads(function_arguments), staff_dict=staff_dict)  # Распакуй аргументы
             # Создание нового сообщения с результатом функции
             new_message = f"{messages}\n\nРасписание сотрудника:\n{staff_schedule}"
 
@@ -488,9 +484,10 @@ while True:
     # Отправляем сообщение в ответ только тогда, когда было новое уведомление и это не stateInstanceChanged
     if response_receive_notification_json and type_webhook != 'stateInstanceChanged':
 
-        # Добавляем в промпт историю сообщений
+        # Добавляем в промпт историю сообщений  и список сотрудников
         prompt_ar = [
             {"role": "system", "content": f"{system_prompt}"},
+            {"role": "system", "content": f"{staff_dict}"},
             {"role": "user", "content": f"{Wh.get_chat_history()}"}
         ]
         print('')
